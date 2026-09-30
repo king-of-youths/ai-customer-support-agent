@@ -1,0 +1,1583 @@
+{
+  "name": "Customer Support — Main",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000001",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        180,
+        500
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_creds",
+          "name": "Telegram Bot Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ext_telegram_id",
+              "name": "telegram_id",
+              "value": "={{ String($json.message.from.id) }}",
+              "type": "string"
+            },
+            {
+              "id": "ext_chat_id",
+              "name": "chat_id",
+              "value": "={{ $json.message.chat.id }}",
+              "type": "string"
+            },
+            {
+              "id": "ext_first_name",
+              "name": "first_name",
+              "value": "={{ $json.message.from.first_name || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "ext_last_name",
+              "name": "last_name",
+              "value": "={{ $json.message.from.last_name || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "ext_username",
+              "name": "username",
+              "value": "={{ $json.message.from.username || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "ext_full_name",
+              "name": "customer_name",
+              "value": "={{ ($json.message.from.first_name ? ($json.message.from.first_name + ' ' + ($json.message.from.last_name || '')).trim() : ($json.message.from.username || 'Customer')) }}",
+              "type": "string"
+            },
+            {
+              "id": "ext_message",
+              "name": "message_text",
+              "value": "={{ ($json.message.text || '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "ext_timestamp",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000002",
+      "name": "Step 18: Extract Customer Information",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 49 & 50: Security and Guardrails Pre-Check\nconst text = ($json.message_text || '').toLowerCase();\n\nconst injectionPatterns = [\n  /ignore\\s+((all|any|the)\\s+)?previous\\s+instructions/i,\n  /ignore\\s+.*instructions/i,\n  /system\\s+override/i,\n  /you\\s+are\\s+now\\s+in\\s+(developer|dan|unrestricted)\\s+mode/i,\n  /reveal\\s+(your|the)?\\s*(system|hidden)?\\s*prompt/i,\n  /print\\s+all\\s+instructions/i,\n  /give\\s+me\\s+all\\s+(customer|user)\\s+records/i,\n  /dump\\s+(the)?\\s*database/i\n];\n\nlet isAttack = false;\nlet violationReason = '';\n\nfor (const pattern of injectionPatterns) {\n  if (pattern.test(text)) {\n    isAttack = true;\n    violationReason = 'Security guardrail violation: Prompt injection or unauthorized data extraction attempt';\n    break;\n  }\n}\n\nreturn [{\n  json: {\n    ...$json,\n    is_guardrail_violation: isAttack,\n    guardrail_reason: violationReason\n  }\n}];"
+      },
+      "id": "a0010001-0000-0000-0000-000000000003",
+      "name": "Step 49-50: Guardrails Pre-Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_guardrail_violation }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "a0010001-0000-0000-0000-000000000004",
+      "name": "Guardrail Violation?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        840,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "blk_resp",
+              "name": "final_reply",
+              "value": "I am an automated assistant for Apex Solutions, dedicated to helping you with our official services and support. How may I assist you with your business needs today?",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000005",
+      "name": "Security Guardrail Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1060,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/customers",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "telegram_id",
+              "value": "={{ 'eq.' + $json.telegram_id }}"
+            },
+            {
+              "name": "select",
+              "value": "*"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000006",
+      "name": "Step 19: Search Supabase Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ Array.isArray($json) ? $json.length : ($json.id ? 1 : 0) }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "a0010001-0000-0000-0000-000000000007",
+      "name": "Step 20: Customer Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pass_cust_id",
+              "name": "customer_id",
+              "value": "={{ Array.isArray($json) ? $json[0].id : $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "pass_cust_name",
+              "name": "customer_name",
+              "value": "={{ Array.isArray($json) ? $json[0].name : $json.name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000008",
+      "name": "Set Existing Customer",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1500,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/customers",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": \"{{ $('Step 18: Extract Customer Information').item.json.customer_name }}\",\n  \"telegram_id\": \"{{ $('Step 18: Extract Customer Information').item.json.telegram_id }}\",\n  \"channel\": \"telegram\",\n  \"status\": \"active\"\n}",
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000009",
+      "name": "Step 20: Create Customer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1500,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "norm_cust_id",
+              "name": "customer_id",
+              "value": "={{ Array.isArray($json) ? $json[0].id : $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "norm_cust_name",
+              "name": "customer_name",
+              "value": "={{ Array.isArray($json) ? $json[0].name : $json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "norm_tel_id",
+              "name": "telegram_id",
+              "value": "={{ $('Step 18: Extract Customer Information').item.json.telegram_id }}",
+              "type": "string"
+            },
+            {
+              "id": "norm_chat_id",
+              "name": "chat_id",
+              "value": "={{ $('Step 18: Extract Customer Information').item.json.chat_id }}",
+              "type": "string"
+            },
+            {
+              "id": "norm_msg",
+              "name": "message_text",
+              "value": "={{ $('Step 18: Extract Customer Information').item.json.message_text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000010",
+      "name": "Merge Customer Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1740,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/conversations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "customer_id",
+              "value": "={{ 'eq.' + $json.customer_id }}"
+            },
+            {
+              "name": "status",
+              "value": "eq.open"
+            },
+            {
+              "name": "order",
+              "value": "created_at.desc"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000011",
+      "name": "Step 22: Check Active Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ Array.isArray($json) ? $json.length : ($json.id ? 1 : 0) }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "a0010001-0000-0000-0000-000000000012",
+      "name": "Conversation Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2180,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c_id_ext",
+              "name": "conversation_id",
+              "value": "={{ Array.isArray($json) ? $json[0].id : $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000013",
+      "name": "Use Existing Conversation",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2400,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/conversations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $('Merge Customer Data').item.json.customer_id }}\",\n  \"channel\": \"telegram\",\n  \"status\": \"open\"\n}",
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000014",
+      "name": "Step 22: Create Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "mrg_conv_id",
+              "name": "conversation_id",
+              "value": "={{ Array.isArray($json) ? $json[0].id : $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "mrg_cust_id",
+              "name": "customer_id",
+              "value": "={{ $('Merge Customer Data').item.json.customer_id }}",
+              "type": "string"
+            },
+            {
+              "id": "mrg_cust_name",
+              "name": "customer_name",
+              "value": "={{ $('Merge Customer Data').item.json.customer_name }}",
+              "type": "string"
+            },
+            {
+              "id": "mrg_tel_id",
+              "name": "telegram_id",
+              "value": "={{ $('Merge Customer Data').item.json.telegram_id }}",
+              "type": "string"
+            },
+            {
+              "id": "mrg_chat_id",
+              "name": "chat_id",
+              "value": "={{ $('Merge Customer Data').item.json.chat_id }}",
+              "type": "string"
+            },
+            {
+              "id": "mrg_msg_text",
+              "name": "message_text",
+              "value": "={{ $('Merge Customer Data').item.json.message_text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000015",
+      "name": "Merge Session Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2640,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"conversation_id\": \"{{ $json.conversation_id }}\",\n  \"customer_id\": \"{{ $json.customer_id }}\",\n  \"sender_type\": \"customer\",\n  \"message\": \"{{ $json.message_text.replace(/\"/g, '\\\\\"') }}\",\n  \"message_type\": \"text\"\n}",
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000016",
+      "name": "Step 23: Save Incoming Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "conversation_id",
+              "value": "={{ 'eq.' + $('Merge Session Data').item.json.conversation_id }}"
+            },
+            {
+              "name": "order",
+              "value": "created_at.desc"
+            },
+            {
+              "name": "limit",
+              "value": "6"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000017",
+      "name": "Step 27: Get Conversation History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3080,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare History and Context\nconst rawHistory = Array.isArray($json) ? $json.slice().reverse() : [];\nconst formattedHistory = rawHistory.map(m => `[${m.sender_type.toUpperCase()}]: ${m.message}`).join('\\n');\n\nconst session = $('Merge Session Data').item.json;\nconst userMsg = session.message_text.toLowerCase();\n\n// Fast Intent Classifier Heuristic\nlet detectedIntent = 'FAQ';\n\nif (userMsg.includes('human') || userMsg.includes('agent') || userMsg.includes('person') || userMsg.includes('representative') || userMsg.includes('operator')) {\n  detectedIntent = 'Human';\n} else if (userMsg.includes('complain') || userMsg.includes('bad') || userMsg.includes('wrong') || userMsg.includes('terrible') || userMsg.includes('angry')) {\n  detectedIntent = 'Complaint';\n} else if (userMsg.includes('book') || userMsg.includes('appointment') || userMsg.includes('schedule') || userMsg.includes('calendar') || userMsg.includes('consultation tomorrow')) {\n  detectedIntent = 'Appointment';\n} else if (userMsg.includes('hire') || userMsg.includes('buy') || userMsg.includes('interested in') || userMsg.includes('start project') || userMsg.includes('proposal')) {\n  detectedIntent = 'Lead';\n} else if (userMsg.includes('price') || userMsg.includes('how much') || userMsg.includes('cost') || userMsg.includes('rate')) {\n  detectedIntent = 'Pricing';\n} else if (userMsg.includes('product') || userMsg.includes('service') || userMsg.includes('feature') || userMsg.includes('what do you offer') || userMsg.includes('automation') || userMsg.includes('website')) {\n  detectedIntent = 'Product';\n}\n\nreturn [{\n  json: {\n    ...session,\n    history_text: formattedHistory,\n    intent: detectedIntent\n  }\n}];"
+      },
+      "id": "a0010001-0000-0000-0000-000000000018",
+      "name": "Step 32: Detect Intent & Format Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.intent }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "Human",
+              "outputKey": "human"
+            },
+            {
+              "value2": "Complaint",
+              "outputKey": "complaint"
+            },
+            {
+              "value2": "Appointment",
+              "outputKey": "appointment"
+            },
+            {
+              "value2": "Lead",
+              "outputKey": "lead"
+            },
+            {
+              "value2": "Product",
+              "outputKey": "product"
+            },
+            {
+              "value2": "Pricing",
+              "outputKey": "pricing"
+            }
+          ]
+        },
+        "fallbackOutput": "faq"
+      },
+      "id": "a0010001-0000-0000-0000-000000000019",
+      "name": "Step 33: Intent Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        3540,
+        580
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/human_handoffs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $('Step 32: Detect Intent & Format Context').item.json.customer_id }}\",\n  \"conversation_id\": \"{{ $('Step 32: Detect Intent & Format Context').item.json.conversation_id }}\",\n  \"reason\": \"Customer requested human intervention / escalation\",\n  \"status\": \"pending\",\n  \"priority\": \"{{ $('Step 32: Detect Intent & Format Context').item.json.intent === 'Complaint' ? 'urgent' : 'high' }}\"\n}",
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000020",
+      "name": "Step 46: Create Human Handoff Record",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3820,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_ADMIN_CHAT_ID }}",
+        "text": "={{ '👤 *HUMAN HANDOFF ALERT*\\n\\n*Customer:* ' + $('Step 32: Detect Intent & Format Context').item.json.customer_name + '\\n*Message:* \"' + $('Step 32: Detect Intent & Format Context').item.json.message_text + '\"\\n*Priority:* ' + ($('Step 32: Detect Intent & Format Context').item.json.intent === 'Complaint' ? 'URGENT' : 'HIGH') + '\\n*Conversation ID:* `' + $('Step 32: Detect Intent & Format Context').item.json.conversation_id + '`' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "a0010001-0000-0000-0000-000000000021",
+      "name": "Step 47: Notify Owner (Handoff)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4040,
+        180
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_creds",
+          "name": "Telegram Bot Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "handoff_cust_msg",
+              "name": "final_reply",
+              "value": "I have forwarded your request directly to our human support team. A representative has been alerted and will assist you shortly.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000022",
+      "name": "Step 48: Handoff Response Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4260,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $('Step 32: Detect Intent & Format Context').item.json.customer_id }}\",\n  \"interest\": \"{{ $('Step 32: Detect Intent & Format Context').item.json.message_text.replace(/\"/g, '\\\\\"') }}\",\n  \"status\": \"new\",\n  \"source\": \"telegram\",\n  \"notes\": \"Captured automatically via AI Customer Support Agent\"\n}",
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000023",
+      "name": "Step 36: Create Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3820,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_ADMIN_CHAT_ID }}",
+        "text": "={{ '🚀 *NEW LEAD CAPTURED*\\n\\n*Customer:* ' + $('Step 32: Detect Intent & Format Context').item.json.customer_name + '\\n*Interest:* ' + $('Step 32: Detect Intent & Format Context').item.json.message_text + '\\n*Source:* Telegram' }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "a0010001-0000-0000-0000-000000000024",
+      "name": "Step 37: Notify Owner (Lead)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4040,
+        380
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_creds",
+          "name": "Telegram Bot Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/appointments",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"customer_id\": \"{{ $('Step 32: Detect Intent & Format Context').item.json.customer_id }}\",\n  \"title\": \"Consultation Call with {{ $('Step 32: Detect Intent & Format Context').item.json.customer_name }}\",\n  \"description\": \"Booked via Telegram AI Support Assistant: {{ $('Step 32: Detect Intent & Format Context').item.json.message_text.replace(/\"/g, '\\\\\"') }}\",\n  \"start_time\": \"{{ $now.plus({ days: 1 }).set({ hour: 14, minute: 0, second: 0 }).toISO() }}\",\n  \"end_time\": \"{{ $now.plus({ days: 1 }).set({ hour: 14, minute: 30, second: 0 }).toISO() }}\",\n  \"status\": \"scheduled\"\n}",
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000025",
+      "name": "Step 43: Save Appointment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3820,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "appt_resp",
+              "name": "final_reply",
+              "value": "={{ '📅 I have scheduled your consultation call for tomorrow at 2:00 PM EST (30 mins). A calendar invitation link has been registered. If you need to adjust or reschedule, just let me know!' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000026",
+      "name": "Step 44: Send Appointment Confirmation",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4040,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/products",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "eq.active"
+            },
+            {
+              "name": "select",
+              "value": "name,price,currency,description,features"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000027",
+      "name": "Step 31: Product & Pricing Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3820,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/knowledge_base",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "eq.active"
+            },
+            {
+              "name": "select",
+              "value": "title,content,category"
+            },
+            {
+              "name": "limit",
+              "value": "5"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000028",
+      "name": "Step 29: Knowledge Base Retrieval",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3820,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare Knowledge Base Context & Product Context for Gemini\nconst session = $('Step 32: Detect Intent & Format Context').item.json;\nlet kbText = '';\nlet productText = '';\n\nif ($('Step 31: Product & Pricing Lookup').isExecuted) {\n  const products = $('Step 31: Product & Pricing Lookup').all().map(i => i.json);\n  productText = products.map(p => `Package: ${p.name}\\nPrice: $${p.price} ${p.currency}\\nDescription: ${p.description}\\nFeatures: ${JSON.stringify(p.features)}`).join('\\n\\n');\n}\n\nif ($('Step 29: Knowledge Base Retrieval').isExecuted) {\n  const kb = $('Step 29: Knowledge Base Retrieval').all().map(i => i.json);\n  kbText = kb.map(k => `[${k.title} (${k.category})]:\\n${k.content}`).join('\\n\\n');\n}\n\nconst masterPrompt = `You are the official AI Customer Support Assistant for Apex Solutions.\\n\\nCRITICAL RULES:\\n1. Rely ONLY on the verified context below.\\n2. NEVER invent prices, policies, discounts, or services. If not in the context, explicitly say you do not have that information and offer human escalation.\\n3. Keep your reply concise, professional, friendly, and formatted in clean Telegram Markdown.\\n\\n[VERIFIED PRODUCTS CATALOG]:\\n${productText || 'No specific product catalog loaded.'}\\n\\n[VERIFIED KNOWLEDGE BASE]:\\n${kbText || 'No specific KB loaded.'}\\n\\n[CONVERSATION HISTORY]:\\n${session.history_text || 'No previous history.'}\\n\\n[CUSTOMER MESSAGE]:\\n${session.message_text}`;\n\nreturn [{\n  json: {\n    ...session,\n    prompt_payload: masterPrompt\n  }\n}];"
+      },
+      "id": "a0010001-0000-0000-0000-000000000029",
+      "name": "Step 26-27: Assemble Gemini Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4080,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://generativelanguage.googleapis.com/v1beta/models/' + ($env.GEMINI_MODEL || 'gemini-2.5-flash') + ':generateContent?key=' + $env.GEMINI_API_KEY }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"{{ $json.prompt_payload.replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n') }}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"temperature\": 0.2,\n    \"maxOutputTokens\": 800\n  }\n}",
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000030",
+      "name": "Step 25: Call Gemini AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4300,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 52: Validate AI Output & Hallucination Check\nlet rawReply = '';\ntry {\n  rawReply = $json.candidates[0].content.parts[0].text;\n} catch (e) {\n  rawReply = 'Thank you for reaching out. A support representative will be in touch shortly.';\n}\n\n// Guardrail verification\nlet isValid = true;\nif (!rawReply || rawReply.trim().length === 0) {\n  isValid = false;\n} else if (rawReply.includes('{{') || rawReply.includes('system prompt') || rawReply.includes('AI model')) {\n  isValid = false;\n}\n\nconst cleanReply = isValid ? rawReply.trim() : 'I apologize for any inconvenience. I have recorded your message and our team will get back to you shortly.';\n\nreturn [{\n  json: {\n    final_reply: cleanReply\n  }\n}];"
+      },
+      "id": "a0010001-0000-0000-0000-000000000031",
+      "name": "Step 52: Validate AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4520,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "mrg_resp_final",
+              "name": "reply_text",
+              "value": "={{ $json.final_reply }}",
+              "type": "string"
+            },
+            {
+              "id": "mrg_chat_final",
+              "name": "chat_id",
+              "value": "={{ $('Step 18: Extract Customer Information').item.json.chat_id }}",
+              "type": "string"
+            },
+            {
+              "id": "mrg_conv_final",
+              "name": "conversation_id",
+              "value": "={{ $('Merge Session Data').isExecuted ? $('Merge Session Data').item.json.conversation_id : null }}",
+              "type": "string"
+            },
+            {
+              "id": "mrg_cust_final",
+              "name": "customer_id",
+              "value": "={{ $('Merge Customer Data').isExecuted ? $('Merge Customer Data').item.json.customer_id : null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000032",
+      "name": "Format Outgoing Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4800,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.conversation_id }}",
+              "operation": "notEmpty"
+            }
+          ]
+        }
+      },
+      "id": "a0010001-0000-0000-0000-000000000033",
+      "name": "Has Conversation?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5020,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.SUPABASE_SERVICE_ROLE_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"conversation_id\": \"{{ $json.conversation_id }}\",\n  \"customer_id\": \"{{ $json.customer_id }}\",\n  \"sender_type\": \"assistant\",\n  \"message\": \"{{ $json.reply_text.replace(/\"/g, '\\\\\"') }}\",\n  \"message_type\": \"text\"\n}",
+        "options": {}
+      },
+      "id": "a0010001-0000-0000-0000-000000000034",
+      "name": "Step 24: Save AI Response",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5240,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Format Outgoing Response').item.json.chat_id }}",
+        "text": "={{ $('Format Outgoing Response').item.json.reply_text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "a0010001-0000-0000-0000-000000000035",
+      "name": "Send Telegram Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5480,
+        500
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_creds",
+          "name": "Telegram Bot Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Step 18: Extract Customer Information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 18: Extract Customer Information": {
+      "main": [
+        [
+          {
+            "node": "Step 49-50: Guardrails Pre-Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 49-50: Guardrails Pre-Filter": {
+      "main": [
+        [
+          {
+            "node": "Guardrail Violation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardrail Violation?": {
+      "main": [
+        [
+          {
+            "node": "Security Guardrail Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step 19: Search Supabase Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Security Guardrail Response": {
+      "main": [
+        [
+          {
+            "node": "Format Outgoing Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 19: Search Supabase Customer": {
+      "main": [
+        [
+          {
+            "node": "Step 20: Customer Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 20: Customer Exists?": {
+      "main": [
+        [
+          {
+            "node": "Set Existing Customer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step 20: Create Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Existing Customer": {
+      "main": [
+        [
+          {
+            "node": "Merge Customer Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 20: Create Customer": {
+      "main": [
+        [
+          {
+            "node": "Merge Customer Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Customer Data": {
+      "main": [
+        [
+          {
+            "node": "Step 22: Check Active Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 22: Check Active Conversation": {
+      "main": [
+        [
+          {
+            "node": "Conversation Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Exists?": {
+      "main": [
+        [
+          {
+            "node": "Use Existing Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step 22: Create Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Existing Conversation": {
+      "main": [
+        [
+          {
+            "node": "Merge Session Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 22: Create Conversation": {
+      "main": [
+        [
+          {
+            "node": "Merge Session Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Session Data": {
+      "main": [
+        [
+          {
+            "node": "Step 23: Save Incoming Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 23: Save Incoming Message": {
+      "main": [
+        [
+          {
+            "node": "Step 27: Get Conversation History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 27: Get Conversation History": {
+      "main": [
+        [
+          {
+            "node": "Step 32: Detect Intent & Format Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 32: Detect Intent & Format Context": {
+      "main": [
+        [
+          {
+            "node": "Step 33: Intent Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 33: Intent Router": {
+      "main": [
+        [
+          {
+            "node": "Step 46: Create Human Handoff Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step 46: Create Human Handoff Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step 43: Save Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step 36: Create Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step 31: Product & Pricing Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step 31: Product & Pricing Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Step 29: Knowledge Base Retrieval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 46: Create Human Handoff Record": {
+      "main": [
+        [
+          {
+            "node": "Step 47: Notify Owner (Handoff)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 47: Notify Owner (Handoff)": {
+      "main": [
+        [
+          {
+            "node": "Step 48: Handoff Response Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 48: Handoff Response Message": {
+      "main": [
+        [
+          {
+            "node": "Format Outgoing Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 36: Create Lead": {
+      "main": [
+        [
+          {
+            "node": "Step 37: Notify Owner (Lead)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 37: Notify Owner (Lead)": {
+      "main": [
+        [
+          {
+            "node": "Step 31: Product & Pricing Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 43: Save Appointment": {
+      "main": [
+        [
+          {
+            "node": "Step 44: Send Appointment Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 44: Send Appointment Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Format Outgoing Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 31: Product & Pricing Lookup": {
+      "main": [
+        [
+          {
+            "node": "Step 26-27: Assemble Gemini Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 29: Knowledge Base Retrieval": {
+      "main": [
+        [
+          {
+            "node": "Step 26-27: Assemble Gemini Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 26-27: Assemble Gemini Context": {
+      "main": [
+        [
+          {
+            "node": "Step 25: Call Gemini AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 25: Call Gemini AI": {
+      "main": [
+        [
+          {
+            "node": "Step 52: Validate AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 52: Validate AI Output": {
+      "main": [
+        [
+          {
+            "node": "Format Outgoing Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Outgoing Response": {
+      "main": [
+        [
+          {
+            "node": "Has Conversation?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Conversation?": {
+      "main": [
+        [
+          {
+            "node": "Step 24: Save AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 24: Save AI Response": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "Customer Support"
+    },
+    {
+      "name": "Production"
+    }
+  ]
+}

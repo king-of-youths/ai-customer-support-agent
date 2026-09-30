@@ -1,0 +1,121 @@
+{
+  "name": "Customer Support — Echo Test (Phase 3)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "c1f7a001-4475-472d-88f0-100000000001",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        260,
+        300
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_creds",
+          "name": "Telegram Bot Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "field_chat_id",
+              "name": "chat_id",
+              "value": "={{ $json.message.chat.id }}",
+              "type": "string"
+            },
+            {
+              "id": "field_text",
+              "name": "echo_text",
+              "value": "={{ \"Echo from AI Customer Support Agent: \" + ($json.message.text || \"(no text)\") }}",
+              "type": "string"
+            },
+            {
+              "id": "field_sender",
+              "name": "sender_name",
+              "value": "={{ $json.message.from.first_name || $json.message.from.username || \"Customer\" }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c1f7a001-4475-472d-88f0-100000000002",
+      "name": "Edit Fields (Extract & Prepare)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.echo_text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c1f7a001-4475-472d-88f0-100000000003",
+      "name": "Telegram Response",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        700,
+        300
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "telegram_creds",
+          "name": "Telegram Bot Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields (Extract & Prepare)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields (Extract & Prepare)": {
+      "main": [
+        [
+          {
+            "node": "Telegram Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "Customer Support"
+    },
+    {
+      "name": "Testing"
+    }
+  ]
+}
